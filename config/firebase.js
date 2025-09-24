@@ -9,40 +9,50 @@ const initializeFirebase = () => {
   }
 
   try {
+    console.log('🔥 Starting Firebase initialization...');
+    
+    // Check if Firebase is already initialized (prevents double initialization)
+    if (admin.apps.length > 0) {
+      console.log('🔥 Firebase app already exists, using existing instance');
+      firebaseInitialized = true;
+      return;
+    }
+
     // For Vercel deployment - use environment variables
     if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
       console.log('🔥 Initializing Firebase with environment variables...');
       
-      // Validate private key format
+      // Process the private key properly
       let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-      if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+      if (privateKey && !privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
         console.log('🔧 Formatting private key...');
         privateKey = privateKey.replace(/\\n/g, '\n');
       }
       
-  // Initialize Firebase Admin with your service account
-  const serviceAccount = {
-    "type": "service_account",
-    "project_id": process.env.FIREBASE_PROJECT_ID,
-    "private_key_id": process.env.FIREBASE_PRIVATE_KEY_ID,
-    "private_key": process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    "client_email": process.env.FIREBASE_CLIENT_EMAIL,
-    "client_id": process.env.FIREBASE_CLIENT_ID,
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": `https://www.googleapis.com/robot/v1/metadata/x509/${process.env.FIREBASE_CLIENT_EMAIL}`
-  };
+      const serviceAccount = {
+        type: "service_account",
+        project_id: process.env.FIREBASE_PROJECT_ID,
+        private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID || undefined,
+        private_key: privateKey,
+        client_email: process.env.FIREBASE_CLIENT_EMAIL,
+        client_id: process.env.FIREBASE_CLIENT_ID || undefined,
+        auth_uri: "https://accounts.google.com/o/oauth2/auth",
+        token_uri: "https://oauth2.googleapis.com/token",
+        auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+        client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.FIREBASE_CLIENT_EMAIL)}`
+      };
 
-      // Validate service account structure
+      // Validate essential service account fields
       if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
-        throw new Error('Invalid service account configuration');
+        throw new Error(`Missing essential Firebase credentials. project_id: ${!!serviceAccount.project_id}, client_email: ${!!serviceAccount.client_email}, private_key: ${!!serviceAccount.private_key}`);
       }
 
+      console.log('🔧 Service account configured, initializing admin...');
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         projectId: process.env.FIREBASE_PROJECT_ID
       });
+      
     } else {
       // For local development - use service account file if it exists
       console.log('🔥 Attempting to initialize Firebase with service account file...');
@@ -54,13 +64,14 @@ const initializeFirebase = () => {
           projectId: serviceAccount.project_id
         });
       } catch (fileError) {
-        console.error('❌ Service account file not found, trying environment variables...');
+        console.error('❌ Service account file not found:', fileError.message);
         throw new Error('Neither environment variables nor service account file available for Firebase initialization');
       }
     }
 
     firebaseInitialized = true;
     console.log('✅ Firebase initialized successfully');
+    
   } catch (error) {
     console.error('❌ Firebase initialization failed:', error);
     firebaseInitialized = false;
@@ -77,7 +88,12 @@ const getFirestore = () => {
     throw new Error('Firebase not initialized');
   }
   
-  return admin.firestore();
+  try {
+    return admin.firestore();
+  } catch (error) {
+    console.error('❌ Failed to get Firestore instance:', error);
+    throw new Error(`Firestore connection failed: ${error.message}`);
+  }
 };
 
 module.exports = {
