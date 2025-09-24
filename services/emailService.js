@@ -21,7 +21,7 @@ class EmailService {
       console.log(`- Email length: ${supportEmail.length}`);
       console.log(`- Password length: ${supportPassword.length}`);
 
-      this.transporter = nodemailer.createTransporter({
+      this.transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
           user: supportEmail,

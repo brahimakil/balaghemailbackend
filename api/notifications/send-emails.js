@@ -20,12 +20,13 @@ const initializeServices = () => {
 };
 
 module.exports = async (req, res) => {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
+  // 🔧 SIMPLIFIED CORS - Allow all origins for now
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
 
+  // Handle preflight requests
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
@@ -36,6 +37,7 @@ module.exports = async (req, res) => {
   }
 
   try {
+    console.log('📧 Gmail Backend - Email notification request received');
     initializeServices();
     
     const { 
@@ -46,12 +48,11 @@ module.exports = async (req, res) => {
       performerVillageId 
     } = req.body;
 
-    console.log('📧 Gmail Backend - Email notification request received');
     console.log('📋 Processing email notifications for:', {
-      action: notification.action,
-      entityType: notification.entityType,
-      entityName: notification.entityName,
-      performedBy: notification.performedBy
+      action: notification?.action,
+      entityType: notification?.entityType,
+      entityName: notification?.entityName,
+      performedBy: notification?.performedBy
     });
 
     // **STRICT FILTERING** - Only allow specific role combinations
@@ -60,10 +61,17 @@ module.exports = async (req, res) => {
       return res.json({ success: true, message: 'No recipients to send to' });
     }
 
+    if (!notification?.performedBy) {
+      console.log('❌ No performedBy email provided');
+      return res.status(400).json({ error: 'performedBy email is required' });
+    }
+
     // **VALIDATE ROLE POLICY**
+    console.log('🔍 Getting Firestore instance...');
     const db = getFirestore();
     
     // Get sender info
+    console.log('👤 Looking up sender:', notification.performedBy);
     const senderSnapshot = await db.collection('users')
       .where('email', '==', notification.performedBy)
       .get();

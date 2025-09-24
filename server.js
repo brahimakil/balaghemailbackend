@@ -4,10 +4,13 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 3001; // Changed from 3002 to 3001
 
-// Middleware
-app.use(cors());
+// Middleware - More specific CORS for local testing
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://balagh-admin.vercel.app'],
+  credentials: true
+}));
 app.use(express.json());
 
 // Import the Vercel function
