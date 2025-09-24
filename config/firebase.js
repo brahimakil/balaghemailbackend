@@ -36,16 +36,16 @@ const initializeFirebase = () => {
         private_key: privateKey,
         client_email: process.env.FIREBASE_CLIENT_EMAIL,
         client_id: process.env.FIREBASE_CLIENT_ID || undefined,
-        auth_uri: "https://accounts.google.com/o/oauth2/auth",
+        auth_uri: "https://accounts.google.com/o/oauth2/auth", 
         token_uri: "https://oauth2.googleapis.com/token",
         auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
         client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.FIREBASE_CLIENT_EMAIL)}`
       };
- 
+    
       // Validate essential service account fields
       if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
         throw new Error(`Missing essential Firebase credentials. project_id: ${!!serviceAccount.project_id}, client_email: ${!!serviceAccount.client_email}, private_key: ${!!serviceAccount.private_key}`);
-      }
+       }
 
       console.log('🔧 Service account configured, initializing admin...');
       admin.initializeApp({
