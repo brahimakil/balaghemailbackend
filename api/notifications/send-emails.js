@@ -1,57 +1,22 @@
-const { initializeFirebase, getFirestore } = require('../../config/firebase');
-
-// Initialize Firebase and services with better error handling
-let firebaseInitialized = false;
-let emailService = null;
-let notificationEmailService = null;
-
-const initializeServices = () => {
-  console.log('🔧 Initializing services...');
-  
-  if (!firebaseInitialized) {
-    console.log('🔥 Initializing Firebase...');
-    initializeFirebase();
-    firebaseInitialized = true;
-    console.log('✅ Firebase initialized');
-  }
-  
-  if (!emailService) {
-    console.log('📧 Initializing email services...');
-    const EmailService = require('../../services/emailService');
-    const NotificationEmailService = require('../../services/notificationEmailService');
-    
-    emailService = new EmailService();
-    notificationEmailService = new NotificationEmailService(emailService);
-    console.log('✅ Email services initialized');
-  }
-};
-
 module.exports = async (req, res) => {
-  console.log('🚀 Function invoked:', req.method, req.url);
+  console.log('🚀 Function invoked:', req.method);
   
-  // ALWAYS handle OPTIONS preflight FIRST with no async
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    const origin = req.headers.origin;
-    if (origin === 'http://localhost:5173' || origin === 'https://balagh-admin.vercel.app') {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-    } else {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     res.setHeader('Access-Control-Max-Age', '86400');
-    console.log('✅ OPTIONS handled');
     return res.status(200).end();
   }
 
-  // Set CORS for all other responses
+  // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 
-  // Handle GET for testing
+  // Health check endpoint
   if (req.method === 'GET') {
-    console.log('📋 GET request - health check');
     return res.status(200).json({ 
       status: 'Gmail Backend API is running!', 
       timestamp: new Date().toISOString(),
@@ -66,14 +31,13 @@ module.exports = async (req, res) => {
   }
 
   if (req.method !== 'POST') {
-    console.log('❌ Method not allowed:', req.method);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     console.log('🔍 Starting POST processing...');
     
-    // Check environment variables first
+    // Check environment variables
     const requiredEnvVars = [
       'FIREBASE_PROJECT_ID',
       'FIREBASE_CLIENT_EMAIL', 
@@ -82,128 +46,136 @@ module.exports = async (req, res) => {
       'SUPPORT_EMAIL_PASSWORD'
     ];
 
-    console.log('🔍 Checking environment variables...');
-    const envStatus = {};
-    requiredEnvVars.forEach(varName => {
-      envStatus[varName] = !!process.env[varName];
-    });
-    console.log('Environment status:', envStatus);
-
     const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
     if (missingVars.length > 0) {
       console.error('❌ Missing environment variables:', missingVars);
       return res.status(500).json({ 
         error: 'Server configuration error', 
-        details: `Missing environment variables: ${missingVars.join(', ')}`,
-        envStatus
+        details: `Missing environment variables: ${missingVars.join(', ')}`
       });
     }
 
     console.log('✅ All environment variables present');
 
-    // Initialize services with detailed error handling
+    // Load modules inside the function to avoid initialization issues
+    let admin, emailService, notificationEmailService, db;
+    
     try {
-      console.log('🔧 Attempting to initialize services...');
-      initializeServices();
-      console.log('✅ Services initialized successfully');
-    } catch (serviceError) {
-      console.error('❌ Service initialization failed:', serviceError);
+      console.log('📦 Loading Firebase Admin...');
+      admin = require('firebase-admin');
+      
+      // Initialize Firebase if not already done
+      if (admin.apps.length === 0) {
+        console.log('🔥 Initializing Firebase...');
+        
+        const serviceAccount = {
+          type: "service_account",
+          project_id: process.env.FIREBASE_PROJECT_ID,
+          private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+          private_key: process.env.FIREBASE_PRIVATE_KEY,
+          client_email: process.env.FIREBASE_CLIENT_EMAIL,
+          client_id: process.env.FIREBASE_CLIENT_ID,
+          auth_uri: "https://accounts.google.com/o/oauth2/auth",
+          token_uri: "https://oauth2.googleapis.com/token",
+          auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+          client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.FIREBASE_CLIENT_EMAIL)}`
+        };
+
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+          projectId: process.env.FIREBASE_PROJECT_ID
+        });
+        
+        console.log('✅ Firebase initialized');
+      } else {
+        console.log('✅ Firebase already initialized');
+      }
+      
+      db = admin.firestore();
+      console.log('✅ Firestore connected');
+
+    } catch (firebaseError) {
+      console.error('❌ Firebase setup failed:', firebaseError);
       return res.status(500).json({ 
-        error: 'Service initialization failed', 
-        details: serviceError.message,
-        stack: serviceError.stack
+        error: 'Firebase initialization failed', 
+        details: firebaseError.message 
+      });
+    }
+
+    try {
+      console.log('📧 Loading email services...');
+      const EmailService = require('../../services/emailService');
+      const NotificationEmailService = require('../../services/notificationEmailService');
+      
+      emailService = new EmailService();
+      notificationEmailService = new NotificationEmailService(emailService);
+      console.log('✅ Email services loaded');
+      
+    } catch (emailError) {
+      console.error('❌ Email service setup failed:', emailError);
+      return res.status(500).json({ 
+        error: 'Email service initialization failed', 
+        details: emailError.message 
       });
     }
 
     // Validate request body
-    console.log('📋 Validating request body...');
     const { notification, recipients } = req.body;
     
     if (!notification) {
-      console.log('❌ Missing notification data');
       return res.status(400).json({ error: 'Notification data is required' });
     }
 
     if (!recipients || recipients.length === 0) {
-      console.log('⚠️ No recipients provided');
       return res.status(200).json({ success: true, message: 'No recipients to send to' });
     }
     
     if (!notification?.performedBy) {
-      console.log('❌ Missing performedBy email');
       return res.status(400).json({ error: 'performedBy email is required' });
     }
 
     console.log('✅ Request validation passed');
-    console.log('📧 Recipients count:', recipients.length);
-    console.log('👤 Performed by:', notification.performedBy);
 
-    // Get Firestore with error handling
-    let db;
-    try {
-      console.log('🔗 Connecting to Firestore...');
-      db = getFirestore();
-      console.log('✅ Firestore connection established');
-    } catch (firestoreError) {
-      console.error('❌ Firestore connection failed:', firestoreError);
-      return res.status(500).json({ 
-        error: 'Database connection failed', 
-        details: firestoreError.message 
-      });
-    }
-
-    console.log('🔍 Looking up sender...');
     // Lookup sender
+    console.log('🔍 Looking up sender...');
     const senderSnapshot = await db.collection('users')
       .where('email', '==', notification.performedBy)
       .get();
 
     if (senderSnapshot.empty) {
-      console.log('❌ Sender not found:', notification.performedBy);
       return res.status(400).json({ error: 'Sender not found' });
     }
 
     const senderData = senderSnapshot.docs[0].data();
     const senderRole = senderData.role;
     const senderVillageId = senderData.assignedVillageId;
-    
-    console.log('👤 Sender info:', { role: senderRole, villageId: senderVillageId });
 
-    // Strict policy
+    // Apply access control policy
     let allowedRecipients = [];
-    console.log('🔐 Applying access control policy...');
-    
     if (senderRole === 'secondary' && senderVillageId) {
-      console.log('📋 Secondary admin - finding village editors...');
       const villageEditorsSnapshot = await db.collection('users')
         .where('role', '==', 'village_editor')
         .where('assignedVillageId', '==', senderVillageId)
         .get();
       const allowedEmails = villageEditorsSnapshot.docs.map(d => d.data().email);
       allowedRecipients = recipients.filter(e => allowedEmails.includes(e));
-      console.log('📧 Allowed recipients (village editors):', allowedRecipients.length);
-      
     } else if (senderRole === 'village_editor' && senderVillageId) {
-      console.log('📋 Village editor - finding secondary admins...');
       const secondaryAdminsSnapshot = await db.collection('users')
         .where('role', '==', 'secondary')
         .where('assignedVillageId', '==', senderVillageId)
         .get();
       const allowedEmails = secondaryAdminsSnapshot.docs.map(d => d.data().email);
       allowedRecipients = recipients.filter(e => allowedEmails.includes(e));
-      console.log('📧 Allowed recipients (secondary admins):', allowedRecipients.length);
-      
     } else {
-      console.log('❌ No permission or missing village assignment');
       allowedRecipients = [];
     }
 
     if (allowedRecipients.length === 0) {
-      console.log('⚠️ No allowed recipients after filtering');
       return res.status(200).json({ success: true, message: 'No allowed recipients after filtering' });
     }
 
-    console.log('📧 Sending emails to allowed recipients...');
+    // Send emails
+    console.log('📧 Sending notification emails...');
     await notificationEmailService.sendNotificationEmails({
       ...notification,
       notificationId: req.body.notificationId || 'unknown'
@@ -218,9 +190,6 @@ module.exports = async (req, res) => {
     
   } catch (err) {
     console.error('❌ Function error:', err);
-    console.error('Stack trace:', err.stack);
-    
-    // Ensure CORS headers even on error
     res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(500).json({
       error: 'Failed to send email notifications',
