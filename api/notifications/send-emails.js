@@ -1,5 +1,5 @@
 const https = require('https');
-const { URL } = require('url');
+const crypto = require('crypto');
 
 module.exports = async (req, res) => {
   console.log('🚀 Function invoked:', req.method);
@@ -23,7 +23,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({ 
       status: 'Gmail Backend API is running!', 
       timestamp: new Date().toISOString(),
-      approach: 'Direct Firebase REST API - No external dependencies'
+      approach: 'Zero dependencies - Built-in modules only'
     });
   }
 
@@ -47,7 +47,7 @@ module.exports = async (req, res) => {
     console.log('📧 Recipients:', recipients);
     console.log('👤 Performed by:', notification.performedBy);
 
-    // Get Firebase access token using service account
+    // Get Firebase access token using service account (built-in crypto only)
     const accessToken = await getFirebaseAccessToken();
     console.log('🔑 Firebase access token obtained');
 
@@ -94,8 +94,8 @@ module.exports = async (req, res) => {
 
     console.log('📧 Sending emails to:', allowedRecipients);
 
-    // Send emails using nodemailer (built-in Node.js modules only)
-    await sendEmails(notification, allowedRecipients);
+    // Send emails using Gmail API
+    await sendEmails(accessToken, notification, allowedRecipients);
 
     console.log('✅ Email notifications sent successfully');
     return res.status(200).json({
@@ -114,10 +114,39 @@ module.exports = async (req, res) => {
   }
 };
 
+// Create JWT manually using built-in crypto module
+function createJWT(payload, privateKey) {
+  // JWT Header
+  const header = {
+    alg: 'RS256',
+    typ: 'JWT'
+  };
+
+  // Base64URL encode
+  const base64urlEncode = (obj) => {
+    return Buffer.from(JSON.stringify(obj))
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+  };
+
+  const encodedHeader = base64urlEncode(header);
+  const encodedPayload = base64urlEncode(payload);
+  
+  // Create signature
+  const data = `${encodedHeader}.${encodedPayload}`;
+  const signature = crypto.sign('RSA-SHA256', Buffer.from(data), privateKey);
+  const encodedSignature = signature.toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+
+  return `${data}.${encodedSignature}`;
+}
+
 // Get Firebase access token using service account (no external dependencies)
 async function getFirebaseAccessToken() {
-  const jwt = require('jsonwebtoken');
-  
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     iss: process.env.FIREBASE_CLIENT_EMAIL,
@@ -127,7 +156,7 @@ async function getFirebaseAccessToken() {
     iat: now
   };
 
-  const token = jwt.sign(payload, process.env.FIREBASE_PRIVATE_KEY, { algorithm: 'RS256' });
+  const token = createJWT(payload, process.env.FIREBASE_PRIVATE_KEY);
   
   return new Promise((resolve, reject) => {
     const postData = `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${token}`;
@@ -149,7 +178,11 @@ async function getFirebaseAccessToken() {
       res.on('end', () => {
         try {
           const response = JSON.parse(data);
-          resolve(response.access_token);
+          if (response.access_token) {
+            resolve(response.access_token);
+          } else {
+            reject(new Error('No access token received'));
+          }
         } catch (e) {
           reject(e);
         }
@@ -254,16 +287,71 @@ async function queryFirestore(accessToken, collection, field1, value1, field2, v
   });
 }
 
-// Send emails using built-in Node.js modules
-async function sendEmails(notification, recipients) {
-  // For now, just simulate email sending
-  console.log('📧 Simulating email send to:', recipients);
-  console.log('📧 Email subject would be:', generateEmailSubject(notification));
+// Send emails using Gmail API
+async function sendEmails(accessToken, notification, recipients) {
+  console.log('📧 Preparing to send emails...');
   
-  // In a real implementation, you'd use SMTP here with built-in modules
-  // or call an external email service API
+  const subject = generateEmailSubject(notification);
+  const htmlContent = generateEmailContent(notification);
   
-  return Promise.resolve();
+  for (const recipient of recipients) {
+    try {
+      await sendSingleEmail(accessToken, recipient, subject, htmlContent);
+      console.log(`✅ Email sent to: ${recipient}`);
+    } catch (error) {
+      console.error(`❌ Failed to send email to ${recipient}:`, error.message);
+    }
+  }
+}
+
+async function sendSingleEmail(accessToken, to, subject, htmlContent) {
+  return new Promise((resolve, reject) => {
+    const email = [
+      `From: ${process.env.SUPPORT_EMAIL}`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      'Content-Type: text/html; charset=utf-8',
+      '',
+      htmlContent
+    ].join('\n');
+
+    const encodedEmail = Buffer.from(email).toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+
+    const postData = JSON.stringify({
+      raw: encodedEmail
+    });
+
+    const options = {
+      hostname: 'gmail.googleapis.com',
+      port: 443,
+      path: '/gmail/v1/users/me/messages/send',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          resolve();
+        } else {
+          reject(new Error(`Gmail API error: ${res.statusCode} ${data}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
+  });
 }
 
 function generateEmailSubject(notification) {
@@ -278,4 +366,40 @@ function generateEmailSubject(notification) {
   }[notification.entityType] || notification.entityType;
 
   return `بلاغ - ${actionText} ${entityText}: ${notification.entityName}`;
+}
+
+function generateEmailContent(notification) {
+  const actionText = {
+    created: 'تم إنشاء',
+    updated: 'تم تعديل',
+    deleted: 'تم حذف'
+  }[notification.action] || `تم ${notification.action}`;
+
+  const entityText = {
+    activities: 'النشاط'
+  }[notification.entityType] || notification.entityType;
+
+  return `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head>
+      <meta charset="UTF-8">
+      <title>إشعار من بلاغ</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; direction: rtl;">
+      <div style="max-width: 600px; margin: 0 auto; background-color: white;">
+        <div style="background: #1e3a8a; color: white; padding: 20px; text-align: center;">
+          <h1>🔔 إشعار من بلاغ</h1>
+        </div>
+        <div style="padding: 20px;">
+          <h2>${actionText} ${entityText}</h2>
+          <p><strong>${notification.entityName}</strong></p>
+          <p>المُنفِذ: ${notification.performedByName || 'غير محدد'}</p>
+          <p>البريد الإلكتروني: ${notification.performedBy}</p>
+          <p>التاريخ: ${new Date(notification.timestamp).toLocaleString('ar-EG')}</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
 }
