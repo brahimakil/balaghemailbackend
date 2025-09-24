@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3001; // Changed from 3002 to 3001
 
 // Middleware - More specific CORS for local testing
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://balagh-admin.vercel.app'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://balagh-admin.vercel.app', 'https://balaghemailbackend.vercel.app'],
   credentials: true
 }));
 app.use(express.json());
