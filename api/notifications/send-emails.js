@@ -19,26 +19,17 @@ const initializeServices = () => {
   }
 };
 
-module.exports = async (req, res) => {
-  // 🔧 VERCEL-SPECIFIC CORS FIX
-  const origin = req.headers.origin;
-  const allowedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'https://balagh-admin.vercel.app',
-    'https://balagh-58afc.web.app'
-  ];
-
-  // Set CORS headers for all requests
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-  
+// CORS headers function
+const setCorsHeaders = (res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Max-Age', '86400');
+};
+
+module.exports = async (req, res) => {
+  // Set CORS headers for all requests
+  setCorsHeaders(res);
 
   // Handle preflight OPTIONS request
   if (req.method === 'OPTIONS') {
@@ -72,7 +63,7 @@ module.exports = async (req, res) => {
     // **STRICT FILTERING** - Only allow specific role combinations
     if (!recipients || recipients.length === 0) {
       console.log('✉️ No recipients specified, skipping email notifications');
-      return res.json({ success: true, message: 'No recipients to send to' });
+      return res.status(200).json({ success: true, message: 'No recipients to send to' });
     }
 
     if (!notification?.performedBy) {
@@ -140,7 +131,7 @@ module.exports = async (req, res) => {
 
     if (allowedRecipients.length === 0) {
       console.log('✉️ No allowed recipients after filtering, skipping email notifications');
-      return res.json({ success: true, message: 'No allowed recipients after filtering' });
+      return res.status(200).json({ success: true, message: 'No allowed recipients after filtering' });
     }
 
     console.log('📧 Sending emails to allowed recipients:', allowedRecipients);
@@ -152,7 +143,7 @@ module.exports = async (req, res) => {
     }, allowedRecipients);
 
     console.log('✅ Email notifications sent successfully');
-    res.json({ 
+    return res.status(200).json({ 
       success: true, 
       message: `Email notifications sent to ${allowedRecipients.length} recipients`,
       recipients: allowedRecipients
@@ -160,7 +151,7 @@ module.exports = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error sending email notifications:', error);
-    res.status(500).json({ 
+    return res.status(500).json({ 
       error: 'Failed to send email notifications',
       details: error.message 
     });
