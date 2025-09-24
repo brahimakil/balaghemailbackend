@@ -41,7 +41,7 @@ const initializeFirebase = () => {
         auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
         client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.FIREBASE_CLIENT_EMAIL)}`
       };
-
+ 
       // Validate essential service account fields
       if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
         throw new Error(`Missing essential Firebase credentials. project_id: ${!!serviceAccount.project_id}, client_email: ${!!serviceAccount.client_email}, private_key: ${!!serviceAccount.private_key}`);
