@@ -34,25 +34,175 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Simple POST test first
   try {
-    console.log('🔍 POST request received');
-    console.log('📦 Request body type:', typeof req.body);
-    console.log('📦 Request body:', req.body);
+    console.log('🔍 Starting POST processing...');
+    console.log('📦 Request body:', JSON.stringify(req.body, null, 2));
     
-    // Test 1: Basic response
+    // Validate request body first
+    const { notification, recipients } = req.body || {};
+    
+    if (!notification) {
+      console.log('❌ No notification data provided');
+      return res.status(400).json({ error: 'Notification data is required' });
+    }
+
+    if (!recipients || recipients.length === 0) {
+      console.log('⚠️ No recipients provided');
+      return res.status(200).json({ success: true, message: 'No recipients to send to' });
+    }
+    
+    if (!notification?.performedBy) {
+      console.log('❌ No performedBy email provided');
+      return res.status(400).json({ error: 'performedBy email is required' });
+    }
+
+    console.log('✅ Request validation passed');
+    console.log('👤 Performed by:', notification.performedBy);
+    console.log('📧 Recipients:', recipients);
+
+    // Initialize Firebase
+    let admin, db;
+    try {
+      console.log('📦 Loading Firebase Admin...');
+      admin = require('firebase-admin');
+      
+      if (admin.apps.length === 0) {
+        console.log('🔥 Initializing Firebase...');
+        
+        const serviceAccount = {
+          type: "service_account",
+          project_id: process.env.FIREBASE_PROJECT_ID,
+          private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+          private_key: process.env.FIREBASE_PRIVATE_KEY,
+          client_email: process.env.FIREBASE_CLIENT_EMAIL,
+          client_id: process.env.FIREBASE_CLIENT_ID,
+          auth_uri: "https://accounts.google.com/o/oauth2/auth",
+          token_uri: "https://oauth2.googleapis.com/token",
+          auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+          client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.FIREBASE_CLIENT_EMAIL)}`
+        };
+
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+          projectId: process.env.FIREBASE_PROJECT_ID
+        });
+        
+        console.log('✅ Firebase initialized');
+      } else {
+        console.log('✅ Firebase already initialized');
+      }
+      
+      db = admin.firestore();
+      console.log('✅ Firestore connected');
+
+    } catch (firebaseError) {
+      console.error('❌ Firebase setup failed:', firebaseError);
+      return res.status(500).json({ 
+        error: 'Firebase initialization failed', 
+        details: firebaseError.message 
+      });
+    }
+
+    // Initialize Email Services
+    let emailService, notificationEmailService;
+    try {
+      console.log('📧 Loading email services...');
+      const EmailService = require('../../services/emailService');
+      const NotificationEmailService = require('../../services/notificationEmailService');
+      
+      emailService = new EmailService();
+      notificationEmailService = new NotificationEmailService(emailService);
+      console.log('✅ Email services loaded');
+      
+    } catch (emailError) {
+      console.error('❌ Email service setup failed:', emailError);
+      return res.status(500).json({ 
+        error: 'Email service initialization failed', 
+        details: emailError.message 
+      });
+    }
+
+    // Lookup sender
+    console.log('🔍 Looking up sender...');
+    const senderSnapshot = await db.collection('users')
+      .where('email', '==', notification.performedBy)
+      .get();
+
+    if (senderSnapshot.empty) {
+      console.log('❌ Sender not found in database:', notification.performedBy);
+      return res.status(400).json({ error: 'Sender not found' });
+    }
+
+    const senderData = senderSnapshot.docs[0].data();
+    const senderRole = senderData.role;
+    const senderVillageId = senderData.assignedVillageId;
+    
+    console.log('👤 Sender details:', { role: senderRole, villageId: senderVillageId });
+
+    // Apply access control policy
+    console.log('🔐 Applying access control policy...');
+    let allowedRecipients = [];
+    
+    if (senderRole === 'secondary' && senderVillageId) {
+      console.log('📋 Secondary admin - finding village editors...');
+      const villageEditorsSnapshot = await db.collection('users')
+        .where('role', '==', 'village_editor')
+        .where('assignedVillageId', '==', senderVillageId)
+        .get();
+      const allowedEmails = villageEditorsSnapshot.docs.map(d => d.data().email);
+      allowedRecipients = recipients.filter(e => allowedEmails.includes(e));
+      console.log('📧 Village editors found:', allowedEmails);
+      console.log('📧 Filtered recipients:', allowedRecipients);
+      
+    } else if (senderRole === 'village_editor' && senderVillageId) {
+      console.log('📋 Village editor - finding secondary admins...');
+      const secondaryAdminsSnapshot = await db.collection('users')
+        .where('role', '==', 'secondary')
+        .where('assignedVillageId', '==', senderVillageId)
+        .get();
+      const allowedEmails = secondaryAdminsSnapshot.docs.map(d => d.data().email);
+      allowedRecipients = recipients.filter(e => allowedEmails.includes(e));
+      console.log('📧 Secondary admins found:', allowedEmails);
+      console.log('📧 Filtered recipients:', allowedRecipients);
+      
+    } else {
+      console.log('❌ No permission or missing village assignment for role:', senderRole);
+      allowedRecipients = [];
+    }
+
+    if (allowedRecipients.length === 0) {
+      console.log('⚠️ No allowed recipients after filtering');
+      return res.status(200).json({ 
+        success: true, 
+        message: 'No allowed recipients after filtering',
+        debug: {
+          senderRole,
+          senderVillageId,
+          originalRecipients: recipients
+        }
+      });
+    }
+
+    // Send emails
+    console.log('📧 Sending notification emails to:', allowedRecipients);
+    await notificationEmailService.sendNotificationEmails({
+      ...notification,
+      notificationId: req.body.notificationId || 'unknown'
+    }, allowedRecipients);
+
+    console.log('✅ Email notifications sent successfully');
     return res.status(200).json({
       success: true,
-      message: 'POST endpoint working',
-      receivedBody: req.body,
-      bodyType: typeof req.body
+      message: `Email notifications sent to ${allowedRecipients.length} recipients`,
+      recipients: allowedRecipients
     });
     
   } catch (err) {
-    console.error('❌ Basic POST error:', err);
+    console.error('❌ Function error:', err);
+    console.error('❌ Error stack:', err.stack);
     res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(500).json({
-      error: 'Basic POST test failed',
+      error: 'Failed to send email notifications',
       details: err.message
     });
   }
