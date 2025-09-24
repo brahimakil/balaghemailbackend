@@ -20,20 +20,25 @@ const initializeServices = () => {
 };
 
 module.exports = async (req, res) => {
-  // 🔧 HANDLE PREFLIGHT FIRST - BEFORE ANY OTHER CODE
+  // ✅ ALWAYS HANDLE OPTIONS PREFLIGHT FIRST - NO ASYNC CODE BEFORE THIS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.setHeader('Access-Control-Max-Age', '86400');
-    res.status(200).end();
-    return;
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Requested-With'
+    );
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+    return res.status(200).end();
   }
 
-  // 🔧 SET CORS HEADERS FOR ALL RESPONSES
+  // ✅ SET CORS HEADERS FOR ALL OTHER REQUESTS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Requested-With'
+  );
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -147,14 +152,13 @@ module.exports = async (req, res) => {
       recipients: allowedRecipients
     });
 
-  } catch (error) {
-    console.error('❌ Error sending email notifications:', error);
-    // 🔧 ENSURE CORS HEADERS ON ERROR RESPONSES TOO
-    return res.status(500)
-      .setHeader('Access-Control-Allow-Origin', '*')
-      .json({ 
-        error: 'Failed to send email notifications',
-        details: error.message 
-      });
+  } catch (err) {
+    console.error('❌ Error sending email notifications:', err);
+    // ✅ ALWAYS INCLUDE CORS HEADERS EVEN ON ERROR
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.status(500).json({ 
+      error: 'Failed to send email notifications',
+      details: err.message 
+    });
   }
 };
