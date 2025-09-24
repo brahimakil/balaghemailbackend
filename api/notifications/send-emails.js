@@ -19,23 +19,21 @@ const initializeServices = () => {
   }
 };
 
-// CORS headers function
-const setCorsHeaders = (res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  res.setHeader('Access-Control-Max-Age', '86400');
-};
-
 module.exports = async (req, res) => {
-  // Set CORS headers for all requests
-  setCorsHeaders(res);
-
-  // Handle preflight OPTIONS request
+  // 🔧 HANDLE PREFLIGHT FIRST - BEFORE ANY OTHER CODE
   if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Max-Age', '86400');
     res.status(200).end();
     return;
   }
+
+  // 🔧 SET CORS HEADERS FOR ALL RESPONSES
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -151,9 +149,12 @@ module.exports = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error sending email notifications:', error);
-    return res.status(500).json({ 
-      error: 'Failed to send email notifications',
-      details: error.message 
-    });
+    // 🔧 ENSURE CORS HEADERS ON ERROR RESPONSES TOO
+    return res.status(500)
+      .setHeader('Access-Control-Allow-Origin', '*')
+      .json({ 
+        error: 'Failed to send email notifications',
+        details: error.message 
+      });
   }
 };
