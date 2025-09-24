@@ -1,5 +1,7 @@
 const https = require('https');
 const crypto = require('crypto');
+const tls = require('tls');
+const net = require('net');
 
 module.exports = async (req, res) => {
   console.log('🚀 Function invoked:', req.method);
@@ -23,7 +25,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({ 
       status: 'Gmail Backend API is running!', 
       timestamp: new Date().toISOString(),
-      approach: 'Zero dependencies - Built-in modules only'
+      approach: 'Direct SMTP - No external dependencies'
     });
   }
 
@@ -47,7 +49,7 @@ module.exports = async (req, res) => {
     console.log('📧 Recipients:', recipients);
     console.log('👤 Performed by:', notification.performedBy);
 
-    // Get Firebase access token using service account (built-in crypto only)
+    // Get Firebase access token for Firestore queries
     const accessToken = await getFirebaseAccessToken();
     console.log('🔑 Firebase access token obtained');
 
@@ -94,14 +96,17 @@ module.exports = async (req, res) => {
 
     console.log('📧 Sending emails to:', allowedRecipients);
 
-    // Send emails using Gmail API
-    await sendEmails(accessToken, notification, allowedRecipients);
+    // Send emails using SMTP
+    const emailResults = await sendEmailsViaSMTP(notification, allowedRecipients);
 
-    console.log('✅ Email notifications sent successfully');
+    console.log('✅ Email sending completed');
+    console.log('📧 Email results:', emailResults);
+    
     return res.status(200).json({
       success: true,
-      message: `Email notifications sent to ${allowedRecipients.length} recipients`,
-      recipients: allowedRecipients
+      message: `Email sending completed`,
+      recipients: allowedRecipients,
+      emailResults: emailResults
     });
     
   } catch (err) {
@@ -113,6 +118,131 @@ module.exports = async (req, res) => {
     });
   }
 };
+
+// Send emails using SMTP (Gmail)
+async function sendEmailsViaSMTP(notification, recipients) {
+  console.log('📧 Starting SMTP email sending...');
+  console.log('📧 SMTP Config check:', {
+    email: process.env.SUPPORT_EMAIL,
+    passwordLength: process.env.SUPPORT_EMAIL_PASSWORD ? process.env.SUPPORT_EMAIL_PASSWORD.length : 0
+  });
+  
+  const results = [];
+  const subject = generateEmailSubject(notification);
+  const htmlContent = generateEmailContent(notification);
+  
+  for (const recipient of recipients) {
+    try {
+      console.log(`📧 Sending SMTP email to: ${recipient}`);
+      await sendSMTPEmail(recipient, subject, htmlContent);
+      console.log(`✅ SMTP email sent successfully to: ${recipient}`);
+      results.push({ recipient, success: true });
+    } catch (error) {
+      console.error(`❌ SMTP email failed for ${recipient}:`, error.message);
+      results.push({ recipient, success: false, error: error.message });
+    }
+  }
+  
+  return results;
+}
+
+// Send single email via SMTP
+async function sendSMTPEmail(to, subject, htmlContent) {
+  return new Promise((resolve, reject) => {
+    console.log(`📧 Connecting to Gmail SMTP for ${to}...`);
+    
+    const socket = tls.connect(465, 'smtp.gmail.com', () => {
+      console.log(`📧 TLS connection established for ${to}`);
+      
+      let step = 0;
+      let buffer = '';
+      
+      const sendCommand = (command) => {
+        console.log(`📧 SMTP Command for ${to}:`, command.replace(process.env.SUPPORT_EMAIL_PASSWORD, '***'));
+        socket.write(command + '\r\n');
+      };
+      
+      socket.on('data', (data) => {
+        buffer += data.toString();
+        const lines = buffer.split('\r\n');
+        
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i];
+          console.log(`📧 SMTP Response for ${to}:`, line);
+          
+          if (step === 0 && line.startsWith('220')) {
+            step = 1;
+            sendCommand('EHLO localhost');
+          } else if (step === 1 && line.startsWith('250')) {
+            step = 2;
+            sendCommand('AUTH LOGIN');
+          } else if (step === 2 && line.startsWith('334')) {
+            step = 3;
+            const emailB64 = Buffer.from(process.env.SUPPORT_EMAIL).toString('base64');
+            sendCommand(emailB64);
+          } else if (step === 3 && line.startsWith('334')) {
+            step = 4;
+            const passwordB64 = Buffer.from(process.env.SUPPORT_EMAIL_PASSWORD).toString('base64');
+            sendCommand(passwordB64);
+          } else if (step === 4 && line.startsWith('235')) {
+            step = 5;
+            sendCommand(`MAIL FROM:<${process.env.SUPPORT_EMAIL}>`);
+          } else if (step === 5 && line.startsWith('250')) {
+            step = 6;
+            sendCommand(`RCPT TO:<${to}>`);
+          } else if (step === 6 && line.startsWith('250')) {
+            step = 7;
+            sendCommand('DATA');
+          } else if (step === 7 && line.startsWith('354')) {
+            step = 8;
+            const emailContent = [
+              `From: ${process.env.SUPPORT_EMAIL}`,
+              `To: ${to}`,
+              `Subject: ${subject}`,
+              'Content-Type: text/html; charset=utf-8',
+              'MIME-Version: 1.0',
+              '',
+              htmlContent,
+              '.'
+            ].join('\r\n');
+            sendCommand(emailContent);
+          } else if (step === 8 && line.startsWith('250')) {
+            sendCommand('QUIT');
+            console.log(`✅ Email sent successfully to ${to} via SMTP`);
+            socket.end();
+            resolve();
+          } else if (line.startsWith('5')) {
+            console.error(`❌ SMTP error for ${to}:`, line);
+            socket.end();
+            reject(new Error(`SMTP error: ${line}`));
+          }
+        }
+        
+        buffer = lines[lines.length - 1];
+      });
+      
+      socket.on('error', (error) => {
+        console.error(`❌ SMTP connection error for ${to}:`, error);
+        reject(error);
+      });
+      
+      socket.on('close', () => {
+        console.log(`📧 SMTP connection closed for ${to}`);
+      });
+    });
+    
+    socket.on('error', (error) => {
+      console.error(`❌ TLS connection error for ${to}:`, error);
+      reject(error);
+    });
+    
+    // Timeout after 30 seconds
+    setTimeout(() => {
+      socket.destroy();
+      reject(new Error(`SMTP timeout for ${to}`));
+    }, 30000);
+  });
+}
 
 // Create JWT manually using built-in crypto module
 function createJWT(payload, privateKey) {
@@ -145,25 +275,21 @@ function createJWT(payload, privateKey) {
   return `${data}.${encodedSignature}`;
 }
 
-// Get access token with Gmail permissions
+// Get Firebase access token (only for Firestore queries)
 async function getFirebaseAccessToken() {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     iss: process.env.FIREBASE_CLIENT_EMAIL,
-    scope: 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/cloud-platform',
+    scope: 'https://www.googleapis.com/auth/cloud-platform',
     aud: 'https://oauth2.googleapis.com/token',
     exp: now + 3600,
     iat: now
   };
 
-  console.log('🔑 Creating JWT with payload:', payload);
-
   const token = createJWT(payload, process.env.FIREBASE_PRIVATE_KEY);
   
   return new Promise((resolve, reject) => {
     const postData = `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${token}`;
-    
-    console.log('🔑 Requesting access token from Google...');
     
     const options = {
       hostname: 'oauth2.googleapis.com',
@@ -180,41 +306,30 @@ async function getFirebaseAccessToken() {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
-        console.log('🔑 Google OAuth response status:', res.statusCode);
-        console.log('🔑 Google OAuth response:', data);
-        
         try {
           const response = JSON.parse(data);
           if (response.access_token) {
-            console.log('✅ Access token obtained successfully');
             resolve(response.access_token);
           } else {
-            console.error('❌ No access token in response:', response);
-            reject(new Error('No access token received: ' + JSON.stringify(response)));
+            reject(new Error('No access token received'));
           }
         } catch (e) {
-          console.error('❌ Failed to parse OAuth response:', e);
           reject(e);
         }
       });
     });
 
-    req.on('error', (error) => {
-      console.error('❌ OAuth request error:', error);
-      reject(error);
-    });
-    
+    req.on('error', reject);
     req.write(postData);
     req.end();
   });
 }
 
-// Query Firestore using REST API (no external dependencies)
+// Query Firestore using REST API
 async function queryFirestore(accessToken, collection, field1, value1, field2, value2) {
   return new Promise((resolve, reject) => {
     const projectId = process.env.FIREBASE_PROJECT_ID;
     
-    // Build query
     let query = {
       structuredQuery: {
         from: [{ collectionId: collection }],
@@ -228,7 +343,6 @@ async function queryFirestore(accessToken, collection, field1, value1, field2, v
       }
     };
 
-    // Add second condition if provided
     if (field2 && value2) {
       query.structuredQuery.where = {
         compositeFilter: {
@@ -296,110 +410,6 @@ async function queryFirestore(accessToken, collection, field1, value1, field2, v
     });
 
     req.on('error', reject);
-    req.write(postData);
-    req.end();
-  });
-}
-
-// Send emails using Gmail API
-async function sendEmails(accessToken, notification, recipients) {
-  console.log('📧 Preparing to send emails...');
-  console.log('📧 Recipients to send to:', recipients);
-  console.log('📧 Using access token:', accessToken ? 'Present' : 'Missing');
-  
-  const subject = generateEmailSubject(notification);
-  const htmlContent = generateEmailContent(notification);
-  
-  console.log('📧 Email subject:', subject);
-  console.log('📧 From email:', process.env.SUPPORT_EMAIL);
-  
-  const results = [];
-  
-  for (const recipient of recipients) {
-    try {
-      console.log(`📧 Attempting to send email to: ${recipient}`);
-      await sendSingleEmail(accessToken, recipient, subject, htmlContent);
-      console.log(`✅ Email sent successfully to: ${recipient}`);
-      results.push({ recipient, success: true });
-    } catch (error) {
-      console.error(`❌ Failed to send email to ${recipient}:`, error.message);
-      console.error(`❌ Full error for ${recipient}:`, error);
-      results.push({ recipient, success: false, error: error.message });
-    }
-  }
-  
-  console.log('📧 Email sending results:', results);
-  return results;
-}
-
-async function sendSingleEmail(accessToken, to, subject, htmlContent) {
-  console.log(`📧 Sending single email to: ${to}`);
-  
-  return new Promise((resolve, reject) => {
-    const email = [
-      `From: ${process.env.SUPPORT_EMAIL}`,
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      'Content-Type: text/html; charset=utf-8',
-      'MIME-Version: 1.0',
-      '',
-      htmlContent
-    ].join('\r\n');
-
-    console.log(`📧 Email content preview for ${to}:`, email.substring(0, 200) + '...');
-
-    const encodedEmail = Buffer.from(email).toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '');
-
-    const postData = JSON.stringify({
-      raw: encodedEmail
-    });
-
-    console.log(`📧 Making Gmail API request for ${to}...`);
-
-    const options = {
-      hostname: 'gmail.googleapis.com',
-      port: 443,
-      path: '/gmail/v1/users/me/messages/send',
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        console.log(`📧 Gmail API response for ${to} - Status: ${res.statusCode}`);
-        console.log(`📧 Gmail API response data for ${to}:`, data);
-        
-        if (res.statusCode === 200) {
-          try {
-            const response = JSON.parse(data);
-            console.log(`✅ Gmail API success for ${to}:`, response);
-            resolve(response);
-          } catch (parseError) {
-            console.log(`✅ Gmail API success for ${to} (raw response):`, data);
-            resolve(data);
-          }
-        } else {
-          console.error(`❌ Gmail API error for ${to} - Status: ${res.statusCode}`);
-          console.error(`❌ Gmail API error data for ${to}:`, data);
-          reject(new Error(`Gmail API error: ${res.statusCode} ${data}`));
-        }
-      });
-    });
-
-    req.on('error', (error) => {
-      console.error(`❌ Request error for ${to}:`, error);
-      reject(error);
-    });
-
     req.write(postData);
     req.end();
   });
