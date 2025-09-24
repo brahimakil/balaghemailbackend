@@ -43,18 +43,77 @@ module.exports = async (req, res) => {
   }
 
   try {
-    initializeServices();
+    // Add comprehensive error logging
+    console.log('🔍 Function started, checking environment...');
+    console.log('Environment variables check:', {
+      FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
+      FIREBASE_CLIENT_EMAIL: !!process.env.FIREBASE_CLIENT_EMAIL,
+      FIREBASE_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
+      SUPPORT_EMAIL: !!process.env.SUPPORT_EMAIL,
+      SUPPORT_EMAIL_PASSWORD: !!process.env.SUPPORT_EMAIL_PASSWORD
+    });
 
+    // Validate environment variables first
+    const requiredEnvVars = [
+      'FIREBASE_PROJECT_ID',
+      'FIREBASE_CLIENT_EMAIL', 
+      'FIREBASE_PRIVATE_KEY',
+      'SUPPORT_EMAIL',
+      'SUPPORT_EMAIL_PASSWORD'
+    ];
+
+    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+    if (missingVars.length > 0) {
+      console.error('❌ Missing environment variables:', missingVars);
+      return res.status(500).json({ 
+        error: 'Server configuration error', 
+        details: `Missing environment variables: ${missingVars.join(', ')}` 
+      });
+    }
+
+    console.log('✅ All environment variables present');
+
+    // Initialize services with error handling
+    try {
+      initializeServices();
+      console.log('✅ Services initialized successfully');
+    } catch (serviceError) {
+      console.error('❌ Service initialization failed:', serviceError);
+      return res.status(500).json({ 
+        error: 'Service initialization failed', 
+        details: serviceError.message 
+      });
+    }
+
+    // Validate request body
     const { notification, recipients } = req.body;
+    
+    if (!notification) {
+      return res.status(400).json({ error: 'Notification data is required' });
+    }
 
     if (!recipients || recipients.length === 0) {
       return res.status(200).json({ success: true, message: 'No recipients to send to' });
     }
+    
     if (!notification?.performedBy) {
       return res.status(400).json({ error: 'performedBy email is required' });
     }
 
-    const db = getFirestore();
+    console.log('📋 Request validation passed');
+
+    // Get Firestore with error handling
+    let db;
+    try {
+      db = getFirestore();
+      console.log('✅ Firestore connection established');
+    } catch (firestoreError) {
+      console.error('❌ Firestore connection failed:', firestoreError);
+      return res.status(500).json({ 
+        error: 'Database connection failed', 
+        details: firestoreError.message 
+      });
+    }
 
     // Lookup sender
     const senderSnapshot = await db.collection('users')
