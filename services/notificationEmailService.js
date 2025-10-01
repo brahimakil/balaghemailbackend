@@ -99,6 +99,26 @@ class NotificationEmailService {
       minute: '2-digit'
     });
 
+    // ✅ Determine admin panel URL based on entity type
+    const adminPanelUrl = process.env.ADMIN_PANEL_URL || 'https://balagh-admin.vercel.app';
+    let actionButtonUrl = adminPanelUrl;
+    let actionButtonText = 'انتقل إلى لوحة التحكم';
+    
+    // Set specific page based on entity type
+    if (notification.entityType === 'activities') {
+      actionButtonUrl = `${adminPanelUrl}/activities`;
+      actionButtonText = 'إدارة الأنشطة';
+    } else if (notification.entityType === 'martyrs') {
+      actionButtonUrl = `${adminPanelUrl}/martyrs`;
+      actionButtonText = 'إدارة الشهداء';
+    } else if (notification.entityType === 'locations') {
+      actionButtonUrl = `${adminPanelUrl}/locations`;
+      actionButtonText = 'إدارة المواقع';
+    } else if (notification.entityType === 'news') {
+      actionButtonUrl = `${adminPanelUrl}/news`;
+      actionButtonText = 'إدارة الأخبار';
+    }
+
     return `
       <!DOCTYPE html>
       <html dir="rtl" lang="ar">
@@ -153,7 +173,18 @@ class NotificationEmailService {
               </table>
             </div>
 
-            <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin-bottom: 25px;">
+            <!-- ✅ NEW: Take Action Button -->
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${actionButtonUrl}" 
+                 style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
+                �� ${actionButtonText}
+              </a>
+              <p style="margin: 10px 0 0 0; color: #6b7280; font-size: 12px;">
+                انقر على الزر أعلاه للانتقال مباشرة إلى لوحة التحكم
+              </p>
+            </div>
+
+            <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin-top: 25px;">
               <p style="margin: 0; color: #92400e; font-size: 14px; text-align: center;">
                 📧 هذا إشعار تلقائي من نظام بلاغ لإدارة المحتوى
               </p>
