@@ -2,10 +2,9 @@
   "name": "gmail-backend",
   "version": "1.0.0",
   "description": "Gmail Email Notifications Backend for Vercel",
-  "main": "api/notifications/send-emails.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "build": "echo 'Build complete'"
+    "start": "node server.js"
   },
   "engines": {
     "node": ">=18.0.0"

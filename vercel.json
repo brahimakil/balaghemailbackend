@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/notifications/send-emails",
+      "dest": "/api/notifications/send-emails.js"
+    },
+    {
+      "src": "/api/notifications/send-verification-code",
+      "dest": "/api/notifications/send-verification-code.js"
+    }
+  ],
+  "functions": {
+    "api/notifications/send-emails.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
+    "api/notifications/send-verification-code.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  }
+}
