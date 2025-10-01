@@ -23,8 +23,8 @@ module.exports = async (req, res) => {
   try {
     console.log('🔐 Verification code request received');
     
-    // Check environment variables
-    if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+    // Check environment variables - ✅ UPDATED variable names
+    if (!process.env.SUPPORT_EMAIL || !process.env.SUPPORT_EMAIL_PASSWORD) {
       console.error('❌ Missing GMAIL environment variables');
       return res.status(500).json({ 
         error: 'Server configuration error',
@@ -43,6 +43,7 @@ module.exports = async (req, res) => {
     console.log('📧 Sending verification code to:', email);
     console.log('🔢 Generated code:', verificationCode);
 
+    // Setup email transporter - ✅ UPDATED variable names
     // Setup email transporter
     const transporter = nodemailer.createTransport({
       service: 'gmail',
