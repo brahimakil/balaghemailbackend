@@ -7,11 +7,12 @@ function generateVerificationCode() {
 }
 
 module.exports = async (req, res) => {
-  // Handle CORS preflight
+  // ✅ CRITICAL: Add CORS headers FIRST
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
+  // Handle preflight OPTIONS request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -27,7 +28,6 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    // Generate verification code
     const verificationCode = generateVerificationCode();
     
     console.log('📧 Sending verification code to:', email);
@@ -91,20 +91,12 @@ module.exports = async (req, res) => {
                 ⚠️ إذا لم تطلب هذا الرمز، يرجى تجاهل هذه الرسالة
               </p>
             </div>
-
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-              <p style="color: #6b7280; font-size: 13px; text-align: center; margin: 0;">
-                <strong>نصيحة أمنية:</strong> لا تشارك هذا الرمز مع أي شخص.<br>
-                فريق بلاغ لن يطلب منك هذا الرمز أبداً.
-              </p>
-            </div>
           </div>
 
           <!-- Footer -->
           <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-radius: 0 0 10px 10px; border-top: 1px solid #e5e7eb;">
             <p style="margin: 0; color: #6b7280; font-size: 12px;">
-              © 2024 بلاغ - نظام إدارة المحتوى<br>
-              هذا البريد الإلكتروني تم إرساله تلقائياً، يرجى عدم الرد عليه
+              © 2024 بلاغ - نظام إدارة المحتوى
             </p>
           </div>
         </div>
@@ -125,8 +117,8 @@ module.exports = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Verification code sent',
-      code: verificationCode, // Return code to store in Firestore
-      expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes
+      code: verificationCode,
+      expiresAt: Date.now() + 5 * 60 * 1000
     });
 
   } catch (error) {
