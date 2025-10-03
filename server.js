@@ -3,12 +3,8 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-// Initialize Firebase first!
-const { initializeFirebase } = require('./config/firebase');
-initializeFirebase();
-
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3001; // Changed from 3002 to 3001
 
 // Middleware - More specific CORS for local testing
 app.use(cors({
@@ -17,15 +13,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Import the Vercel functions
+// Import the Vercel function
 const sendEmailsHandler = require('./api/notifications/send-emails');
-const cronStatusHandler = require('./api/backups/cron-status');
-const triggerBackupHandler = require('./api/backups/trigger-backup');
 
-// Routes for local testing
+// Route for local testing
 app.post('/api/notifications/send-emails', sendEmailsHandler);
-app.get('/api/backups/cron-status', cronStatusHandler);
-app.post('/api/backups/trigger-backup', triggerBackupHandler);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -39,7 +31,6 @@ if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`🚀 Gmail Backend running on port ${PORT}`);
     console.log(`📧 Email API available at: http://localhost:${PORT}/api/notifications/send-emails`);
-    console.log(`🔄 Backup API available at: http://localhost:${PORT}/api/backups/cron-status`);
   });
 }
 
