@@ -14,7 +14,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.options('*', cors()); // Handle preflight requests
-app.use(express.json({ limit: '50mb' })); // Increase limit for video metadata
+app.use(express.json({ limit: '500mb' })); // Increase limit for video metadata
+app.use(express.urlencoded({ limit: '500mb', extended: true })); // Handle URL-encoded data
 
 // Import the Vercel functions
 const sendEmailsHandler = require('./api/notifications/send-emails');
