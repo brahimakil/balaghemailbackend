@@ -13,11 +13,13 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Import the Vercel function
+// Import the Vercel functions
 const sendEmailsHandler = require('./api/notifications/send-emails');
+const youtubeUploadHandler = require('./api/youtube/upload');
 
-// Route for local testing
+// Routes for local testing
 app.post('/api/notifications/send-emails', sendEmailsHandler);
+app.post('/api/youtube/upload', youtubeUploadHandler);
 
 // Health check
 app.get('/health', (req, res) => {
