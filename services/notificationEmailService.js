@@ -177,7 +177,7 @@ class NotificationEmailService {
             <div style="text-align: center; margin: 30px 0;">
               <a href="${actionButtonUrl}" 
                  style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
-                �� ${actionButtonText}
+                 🚀 ${actionButtonText}
               </a>
               <p style="margin: 10px 0 0 0; color: #6b7280; font-size: 12px;">
                 انقر على الزر أعلاه للانتقال مباشرة إلى لوحة التحكم
