@@ -9,9 +9,12 @@ const PORT = process.env.PORT || 3001; // Changed from 3002 to 3001
 // Middleware - More specific CORS for local testing
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174', 'https://balagh-admin.vercel.app', 'https://balaghemailbackend.vercel.app'],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+app.options('*', cors()); // Handle preflight requests
+app.use(express.json({ limit: '50mb' })); // Increase limit for video metadata
 
 // Import the Vercel functions
 const sendEmailsHandler = require('./api/notifications/send-emails');
