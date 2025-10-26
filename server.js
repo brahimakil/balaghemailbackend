@@ -18,7 +18,7 @@ app.use(express.json({ limit: '50mb' })); // Increase limit for video metadata
 
 // Import the Vercel functions
 const sendEmailsHandler = require('./api/notifications/send-emails');
-const youtubeUploadHandler = require('./api/youtube/upload');
+const youtubeUploadHandler = require('./api/youtube/upload'); 
 
 // Routes for local testing
 app.post('/api/notifications/send-emails', sendEmailsHandler);
